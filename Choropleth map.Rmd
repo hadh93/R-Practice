@@ -1,0 +1,138 @@
+---
+title: "Project 5"
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(colorspace)
+knitr::opts_chunk$set(echo = TRUE)
+options(warn = -1)
+```
+
+Read in the dataset you will be working with:
+
+```{r message = FALSE}
+
+install.packages("rnaturalearth",repos = "http://cran.us.r-project.org")
+library(rnaturalearth)
+library(sf)
+artists <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2022/2022-09-27/artists.csv')
+map = ne_countries(returnclass="sf")
+
+# Generating choropleth map of United States
+sf_us <- ne_states(
+  country = "United States of America",
+  returnclass='sf'
+)
+
+# Calculate the sum of all artists for every state
+sum_by_state <- artists %>%
+  group_by(state) %>%
+  summarize(sum_value = sum(artists_n, na.rm=TRUE))
+
+# Calculate the sum of all workers for every state
+all_workers = artists %>%
+  group_by(state) %>%
+  summarize(all_workers = sum(all_workers_n, na.rm= TRUE))
+
+# Divide the sum of workers by 13, since there are 13 categories of the artists which causes multiple summation of workers numbers
+all_workers <- all_workers %>%
+  mutate(all_workers = all_workers/13)
+
+# Merge 'all_workers' data with 'sum_by_state' data, and calculate the ratio of artists among workforce by dividing the 'sum_value' by 'all_workers'
+sum_by_state <- merge(sum_by_state, all_workers, by.x = "state", by.y = "state", all.x = TRUE)
+sum_by_state <- sum_by_state %>%
+  mutate(artist_ratio = sum_value/all_workers)
+
+# Merge the cleansed data with the 'sf_us' to use the data to generate choropleth map  
+sf_us <- merge(sf_us, sum_by_state, by.x = "gn_name", by.y = "state", all.x = TRUE)
+options(scipen=5)
+
+
+```
+
+
+*Provide more information about the dataset here.*
+
+**Question:** 
+
+> How do numbers of artists and artists' ratio among workforce vary across different states?
+
+
+**Introduction:** 
+
+>The "Artists in the USA" dataset, which includes estimates of the number of artists working at the federal and state levels from 2015 to 2019, is of interest. The data was collected by American Community Survey (ACS) data, which the U.S. census bureau conducted. 
+Specifically, among the dataset, we are interested in the 'state,' 'race,' 'type,' 'all_workers_n,' and 'artists_n.'The data column names are quite self-explanatory. For example, the 'state' and 'race' columns contain state and race information. The 'type' variable specifies the type of artists, i.e., architects, art directors, etc. The 'all_workers_n' has the count of workers whose state is 'state' and race is 'race.' And the 'artists_n' has the count of workers whose state is 'state' and race is 'race,' and the type of their occupations is 'type.'
+
+
+**Approach:** 
+
+>To perform this analysis, data was preprocessed so that we could count the sum of artists in each state regardless of their occupation specified in the 'type' variable. Also, the count of all workforce in the state needed to be calculated as well. Since the total number of workers is re-mentioned in the data multiple times by the number of "type" categories, the total number of workers was summated and then divided again by the number of "type" categories, which is 13.
+>
+>To visualize this geospatial dataset, choropleth maps were used. However, Alaska and Hawaii were omitted for more effective visualization of the state-wise information. As this information could be valuable for the readers, we printed out the data values reported in the two states that were omitted from the map. Then, to further investigate the ranking information of each state, bar plots or dot plots were generated whenever necessary.
+
+**Analysis:**
+
+```{r }
+
+# Choropleth map of the number of artists by state
+sf_us %>%
+  # exclude Alaska (US02), Hawaii (US15)
+  filter(!gn_name %in% c("Alaska", "Hawaii")) %>%
+  ggplot() + geom_sf(aes(fill = sum_value))+
+  scale_fill_gradient(low = "white", high = "red", na.value = "grey70") +
+  theme_void()
+
+# Print out the artist counts of Alaska and Hawaii, as the states were excluded in the map
+sf_us %>%
+  filter(gn_name %in% c("Alaska", "Hawaii")) %>%
+  st_drop_geometry() %>%
+  select(gn_name, sum_value) %>%
+  print()
+
+# Bar plot of the number of artists by state
+ggplot(sum_by_state, aes(sum_value, fct_reorder(state, sum_value))) +
+  geom_col() +
+  xlab("# of artists") +
+  ylab(NULL)
+
+```
+
+```{r}
+# Choropleth map of the ratio of artists among workforce by state
+sf_us %>%
+  # exclude Alaska (US02), Hawaii (US15)
+  filter(!gn_name %in% c("Alaska", "Hawaii")) %>%
+  ggplot() + geom_sf(aes(fill = artist_ratio))+
+  scale_fill_gradient(low = "white", high = "red", na.value = "grey70") +
+  theme_void()
+
+# Print out the artist ratios of Alaska and Hawaii, as the states were excluded in the map
+sf_us %>%
+  filter(gn_name %in% c("Alaska", "Hawaii")) %>%
+  st_drop_geometry() %>%
+  select(gn_name, artist_ratio) %>%
+  print()
+
+# Bar plot of the artist ratio by state
+ggplot(sum_by_state, aes(artist_ratio, fct_reorder(state, artist_ratio))) +
+  geom_col() +
+  xlab("% of artists among all workers") +
+  ylab(NULL)
+
+# Dot plot of the artist ratio, only the top 20 states
+sum_by_state %>%
+  arrange(desc(artist_ratio)) %>%
+  slice(1:20) %>%
+  ggplot(aes(artist_ratio, fct_reorder(state, artist_ratio))) +
+  geom_point(position = position_dodge(0.5)) +
+  xlab("% of artists among all workers - Top 20 States") +
+  ylab(NULL)
+```
+
+**Discussion:** 
+
+>As the first choropleth map suggests, California is the state with the greatest number of artists, followed by New York, Texas, and Florida. Such information is also confirmed by bar plots as well. However, it was interesting to find that a couple of other states outperformed California regarding the artists' ratio among the general workforce. New York scored higher than California, which is evident in both map and the bar/point plot. In the bar/point plot, it is reported that the District of Columbia scored in first place.
+>
+>Although the artists' numbers and ratio reported captured the evidence difference among states, the reason for such difference needs to be further investigated. 
+
